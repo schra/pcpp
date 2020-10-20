@@ -101,6 +101,7 @@ The help from the command line tool ``pcpp``::
                 [--passthru-defines] [--passthru-unfound-includes]
                 [--passthru-unknown-exprs] [--passthru-comments]
                 [--passthru-magic-macros] [--no-expand-includes]
+                [--use-gcc-macros <standard>] [--use-gcc-includes <standard>]
                 [--disable-auto-pragma-once] [--line-directive [form]] [--debug]
                 [--time] [--filetimes [path]] [--compress]
                 [--assume-input-encoding <encoding>]
@@ -134,6 +135,10 @@ The help from the command line tool ``pcpp``::
       --passthru-magic-macros
                             Pass through double underscore magic macros unmodified
       --no-expand-includes  Evaluate but do not expand #includes
+      --use-gcc-macros <standard>
+                            Define the macros that GCC defines per default
+      --use-gcc-includes <standard>
+                            Include the directories that GCC includes per default
       --disable-auto-pragma-once
                             Disable the heuristics which auto apply #pragma once
                             to #include files wholly wrapped in an obvious include

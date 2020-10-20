@@ -4,9 +4,42 @@ if __name__ == '__main__' and __package__ is None:
     sys.path.append( os.path.dirname( os.path.dirname( os.path.abspath(__file__) ) ) )
 from pcpp.preprocessor import Preprocessor, OutputDirective, Action
 
+import subprocess
+
 version='1.23'
 
 __all__ = []
+
+def get_gcc_includes(std_option):
+    include_paths = []
+
+    args = ["-E", "-v", "-std=" + std_option, "-"]
+
+    is_cpp_standard = "++" in std_option
+    if is_cpp_standard:
+        args = [ "-xc++" ] + args
+
+    _, stderr = subprocess.Popen(["gcc"] + args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True).communicate()
+    for line in stderr.splitlines():
+        if line[:2] == " /":
+            # split by " " to take everything before the first whitespace. this
+            # is because there are lines such as:
+            #
+            # /usr/lib/gcc/x86_64-pc-linux-gnu/10.2.0/cc1plus -E -quiet -v -D_GNU_SOURCE - -mtune=generic -march=x86-64
+            include_path = line[1:].split(" ")[0]
+            include_paths.append(include_path)
+
+    return include_paths
+
+def get_gcc_macros(std_option):
+    args = ["-E", "-dM", "-std=" + std_option, "-"]
+
+    is_cpp_standard = "++" in std_option
+    if is_cpp_standard:
+        args = [ "-xc++" ] + args
+
+    stdout, _ = subprocess.Popen(["gcc"] + args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True).communicate()
+    return stdout
 
 class FileAction(argparse.Action):
     def __init__(self, option_strings, dest, **kwargs):
@@ -45,6 +78,8 @@ class CmdPreprocessor(Preprocessor):
         argp.add_argument('--passthru-comments', dest = 'passthru_comments', action = 'store_true', help = 'Pass through comments unmodified')
         argp.add_argument('--passthru-magic-macros', dest = 'passthru_magic_macros', action = 'store_true', help = 'Pass through double underscore magic macros unmodified')
         argp.add_argument('--no-expand-includes', dest = 'no_expand_includes', action = 'store_true', help = 'Evaluate but do not expand #includes')
+        argp.add_argument('--use-gcc-macros', dest = 'use_gcc_macros', metavar = '<standard>', nargs = 1, default = None, help = 'Define the macros that GCC defines per default')
+        argp.add_argument('--use-gcc-includes', dest = 'use_gcc_includes', metavar = '<standard>', nargs = 1, default = None, help = 'Include the directories that GCC includes per default')
         argp.add_argument('--disable-auto-pragma-once', dest = 'auto_pragma_once_disabled', action = 'store_true', default = False, help = 'Disable the heuristics which auto apply #pragma once to #include files wholly wrapped in an obvious include guard macro')
         argp.add_argument('--line-directive', dest = 'line_directive', metavar = 'form', default = '#line', nargs = '?', help = "Form of line directive to use, defaults to #line, specify nothing to disable output of line directives")
         argp.add_argument('--debug', dest = 'debug', action = 'store_true', help = 'Generate a pcpp_debug.log file logging execution')
@@ -62,6 +97,11 @@ class CmdPreprocessor(Preprocessor):
 
         self.args = args[0]
         super(CmdPreprocessor, self).__init__()
+
+        if self.args.use_gcc_includes:
+            std_option = self.args.use_gcc_includes[0]
+            for path in get_gcc_includes(std_option):
+                self.add_path(path)
         
         # Override Preprocessor instance variables
         self.define("__PCPP_VERSION__ " + version)
@@ -123,7 +163,18 @@ class CmdPreprocessor(Preprocessor):
                 self.add_path(d)
 
         try:
-            if len(self.args.inputs) == 1:
+
+            if self.args.use_gcc_macros:
+                # TODO: this is quite hacky because it increases the line
+                # number of the loaded file
+                std_option = self.args.use_gcc_macros[0]
+                input = get_gcc_macros(std_option)
+                if input[-1] != '\n':
+                    input = input + '\n'
+                for i in self.args.inputs:
+                    input += open(i.name).read() + '\n'
+                self.parse(input)
+            elif len(self.args.inputs) == 1:
                 self.parse(self.args.inputs[0])
             else:
                 print("Warning: Input for multiple files is currently broken when --no-expand-includes is used", file=sys.stderr)
